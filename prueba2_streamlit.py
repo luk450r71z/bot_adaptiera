@@ -28,9 +28,10 @@ else:
     nombre_usuario = query_params.get("nombre", "Candidato")
     id_usuario = query_params.get("id", None)
 
+from dotenv import load_dotenv
+load_dotenv()  # Carga las variables de entorno desde el archivo .env
 
 # Configura tu API Key de Groq
-os.environ["GROQ_API_KEY"] = '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'
 client = groq.Groq(api_key=os.environ["GROQ_API_KEY"])
 
 # Cargar preguntas desde archivo JSON
@@ -99,7 +100,7 @@ def enviar_resumen_por_email(respuestas, preguntas_data, nombre, id_usuario, des
 
     # Configurar email
     remitente = "santiago.ferrero@adaptiera.team" 
-    contraseña = "nejr oroq emgg cjeu"  
+    contraseña = os.getenv("PASS_GMAIL")
     asunto = f"📝 Respuestas de entrevista - {nombre}"
 
     mensaje = MIMEMultipart()

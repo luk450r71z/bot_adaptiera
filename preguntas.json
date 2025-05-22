@@ -1,0 +1,17 @@
+{
+  "preguntas": [
+    {
+      "id": "pregunta_1",
+      "texto": "¿Por qué estás interesado en este puesto?"
+    },
+    {
+      "id": "pregunta_2",
+      "texto": "¿Cuál es tu experiencia previa relacionada con este rol?"
+    },
+    {
+      "id": "pregunta_3",
+      "texto": "¿Dónde te ves en 5 años?"
+    }
+  ]
+}
+  
