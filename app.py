@@ -1,5 +1,5 @@
 import streamlit as st
-from utils import validar_email, validar_telefono
+from utils import validar_email, validar_telefono, acortar_url
 from api_client import obtener_vacantes_extra, obtener_medios_extra
 from email_sender import enviar_correo
 from email_templates import generar_asunto_y_cuerpo_simple
@@ -7,6 +7,7 @@ from sms_sender import enviar_sms
 #Cryptography
 import json
 from cryptography.fernet import Fernet
+
 
 
 st.set_page_config(page_title="Adaptiera - Formulario de Invitación a Postulación", layout="centered")
@@ -77,6 +78,8 @@ if submitted:
         # Encriptar el string
         json_encriptado = cipher.encrypt(json_string.encode())
 
+        url_entrevista= acortar_url(f"https://chatbot-adaptiera.streamlit.app/?token={json_encriptado}")
+
         with st.spinner("📤 Enviando notificación..."):
             notificacion_enviada = False
 
@@ -101,7 +104,8 @@ if submitted:
                             nombre_candidato=nombre,
                             puesto=vacante,
                             empresa="Adaptiera",
-                            enlace_entrevista=f"https://chatbot-adaptiera.streamlit.app/?token={json_encriptado}"
+                            enlace_entrevista=url_entrevista
+        
                         )
                         notificacion_enviada = enviar_correo(
                             destinatario=correo,
@@ -123,7 +127,9 @@ if submitted:
 
             elif medio_notif == 'telefono':
                 try:
-                    mensaje_sms = f"Hola {nombre}, en Adaptiera queremos invitarte a postular al puesto de {vacante}. Ingresa aquí: https://chatbot-adaptiera.streamlit.app/?token=aquiToken"
+                    #mensaje_sms = f"Hola {nombre}, en Adaptiera queremos invitarte a postular al puesto de {vacante}. Ingresa aquí: {url_entrevista}"
+                    mensaje_sms = f"Hola {nombre}, click {url_entrevista}"
+
                     notificacion_enviada = enviar_sms(telefono, mensaje_sms)
                     st.success("✅ SMS enviado correctamente al candidato.")
                 except Exception as e:
@@ -133,68 +139,3 @@ if submitted:
                 st.info(f"📋 Medio de notificación no manejado: {medio_notif}")
 
         st.session_state["enviando"] = False
-
-
-# if submitted:
-#     st.session_state["enviando"] = True
-#     errores = []
-#     if not validar_email(correo):
-#         errores.append("Correo inválido.")
-#     if not validar_telefono(telefono):
-#         errores.append("Teléfono inválido (debe tener al menos 10 dígitos).")
-
-#     if errores:
-#         for error in errores:
-#             st.error(error)
-#         st.session_state["enviando"] = False
-#     else:
-#         vacante = vacantes_con_indices[vacante_seleccionada]
-
-#         with st.spinner("📤 Enviando correos..."):
-#             # 1. Enviar correo interno
-#             correo_interno_enviado = enviar_correo(
-#                 destinatario=correo,
-#                 asunto="👋 Te estamos buscando para el puesto de Data scientist",
-#                 cuerpo=f"""
-#                 Apellidos y Nombres: {nombre}
-#                 Vacante: {vacante}
-#                 Correo: {correo}
-#                 Teléfono: {telefono}
-#                 Medio de Notificación: {medio_notif}
-#                 """
-#             )
-
-#             # 2. Enviar correo al candidato si corresponde
-#             correo_candidato_enviado = False
-#             if correo_interno_enviado and medio_notif == 'correo':
-#                 try:
-#                     asunto_reclutamiento, cuerpo_reclutamiento = generar_asunto_y_cuerpo_simple(
-#                         nombre_candidato=nombre,
-#                         puesto=vacante,
-#                         empresa="Adaptiera",
-#                         enlace_entrevista="https://forms.google.com/d/tu-formulario-entrevista"  # Cambiar por el real
-#                     )
-#                     correo_candidato_enviado = enviar_correo(
-#                         destinatario=correo,
-#                         asunto=asunto_reclutamiento,
-#                         cuerpo=cuerpo_reclutamiento
-#                     )
-#                 except Exception as e:
-#                     st.error(f"Error al generar correo de reclutamiento: {e}")
-
-#         # Mostrar resultados
-#         if correo_interno_enviado:
-#             st.success("✅ Formulario enviado correctamente.")
-#             if medio_notif == 'correo':
-#                 if correo_candidato_enviado:
-#                     st.success("✅ Correo de reclutamiento enviado al candidato.")
-#                 else:
-#                     st.warning("⚠️ No se pudo enviar el correo de reclutamiento al candidato.")
-#             elif medio_notif == 'telefono':
-#                 st.info("📞 El candidato será contactado por teléfono.")
-#             else:
-#                 st.info(f"📋 Notificación configurada vía: {medio_notif}")
-#         else:
-#             st.error("❌ Hubo un error al enviar el correo interno.")
-
-#         st.session_state["enviando"] = False
