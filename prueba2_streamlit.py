@@ -3,33 +3,61 @@ import groq
 import os
 import json
 from datetime import datetime
-import base64
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from cryptography.fernet import Fernet
+
+import ast
+
+from dotenv import load_dotenv
+load_dotenv()  # Carga las variables de entorno desde el archivo .env
+
+# Función para desencriptar texto
+def desencriptar_texto(texto_encriptado, clave):
+    f = Fernet(clave)
+
+    try:
+        # Intenta evaluar de forma segura (solo literales)
+        b = ast.literal_eval(texto_encriptado)
+        print(f"Texto evaluado: {b}")
+        print(type(b))
+    except Exception:
+        # Si falla, intenta corregir
+        texto_encriptado += "'"
+        b = ast.literal_eval(texto_encriptado)
+        print("Texto inválido, se agregó un apóstrofo.")
+        print(f"Texto corregido: {texto_encriptado}")
+    
+    return f.decrypt(b).decode()
 
 # Leer token cifrado en la URL
 query_params = st.query_params
 token = query_params.get("token", None)
 
-# Desencriptar si existe token
 if token:
     try:
-        decoded_bytes = base64.urlsafe_b64decode(token.encode())
-        decoded_str = decoded_bytes.decode()
-        datos = json.loads(decoded_str)
-        id_usuario = datos.get("id", None)
-        nombre_usuario = datos.get("nombre", "Candidato")
+        # La clave debe estar almacenada de forma segura, aquí la obtenemos de una variable de entorno
+        clave = os.getenv("FERNET_KEY").encode()
+        # Desencriptar el JSON
+        json_desencriptado = desencriptar_texto(token, clave)
+        print(f"Token desencriptado: {json_desencriptado}")
+        # Convertir el JSON a diccionario
+        datos_usuario = json.loads(json_desencriptado)
+        nombre_usuario = datos_usuario.get("nombre", "Candidato")
+        telefono_usuario = datos_usuario.get("phone")
+        id_vacancy = datos_usuario.get("vacancy")
     except Exception as e:
-        st.warning(f"Error al decodificar el token: {e}")
+        st.error(f"Error al procesar el token: {str(e)}")
+        nombre_usuario = "Candidato"
+        id_vacancy = None
 else:
     # Leer parámetros GET desde la URL
     query_params = st.query_params
     nombre_usuario = query_params.get("nombre", "Candidato")
-    id_usuario = query_params.get("id", None)
+    telefono_usuario = query_params.get("phone")
+    id_vacancy = query_params.get("vacancy")
 
-from dotenv import load_dotenv
-load_dotenv()  # Carga las variables de entorno desde el archivo .env
 
 # Configura tu API Key de Groq
 client = groq.Groq(api_key=os.environ["GROQ_API_KEY"])
@@ -54,6 +82,7 @@ if "chat" not in st.session_state:
 def validar_respuesta(pregunta: str, respuesta: str) -> bool:
     prompt = f"""
 Analiza la siguiente respuesta y determina si responde a la pregunta.
+No seas tan estricto, la respuesta puede ser un poco vaga.
 
 Pregunta: "{pregunta}"
 Respuesta del candidato: "{respuesta}"
@@ -74,13 +103,13 @@ Responde solo con:
         return True
 
 # Guardar archivo con respuestas
-def guardar_respuestas(respuestas, nombre, id_usuario):
+def guardar_respuestas(respuestas, nombre, id_vacancy):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nombre_archivo = f"respuestas_{id_usuario or 'anonimo'}_{timestamp}.json"
+    nombre_archivo = f"respuestas_{nombre or 'anonimo'}_{timestamp}.json"
     datos_guardar = {
         "fecha": timestamp,
         "nombre": nombre,
-        "id_usuario": id_usuario,
+        "id_vacancy": id_vacancy,
         "respuestas": respuestas
     }
     with open(nombre_archivo, "w", encoding="utf-8") as f:
@@ -88,9 +117,9 @@ def guardar_respuestas(respuestas, nombre, id_usuario):
     return nombre_archivo
 
 
-def enviar_resumen_por_email(respuestas, preguntas_data, nombre, id_usuario, destino_email):
+def enviar_resumen_por_email(respuestas, preguntas_data, nombre, id_vacancy, destino_email):
     # Crear cuerpo del mensaje
-    cuerpo = f"Entrevista de {nombre} (ID: {id_usuario or 'N/A'})\n\n"
+    cuerpo = f"Entrevista de {nombre} (ID Vacante: {id_vacancy or 'N/A'})\n\n"
 
     for pregunta in preguntas_data:
         id_p = pregunta["id"]
@@ -99,7 +128,7 @@ def enviar_resumen_por_email(respuestas, preguntas_data, nombre, id_usuario, des
         cuerpo += f"🔹 {texto}\n➡️ {respuesta}\n\n"
 
     # Configurar email
-    remitente = "santiago.ferrero@adaptiera.team" 
+    remitente = "santiago.ferrero@adaptiera.team"
     contraseña = os.getenv("PASS_GMAIL")
     asunto = f"📝 Respuestas de entrevista - {nombre}"
 
@@ -127,8 +156,8 @@ def enviar_resumen_por_email(respuestas, preguntas_data, nombre, id_usuario, des
 # Mostrar el título y saludo personalizado
 st.title("🧑‍💼 Chat de Entrevista RRHH")
 st.markdown(f"**Bienvenido/a, {nombre_usuario}**")
-if id_usuario:
-    st.markdown(f"ID de entrevista: `{id_usuario}`")
+if id_vacancy:
+    st.markdown(f"ID de vacante: `{id_vacancy}`")
 
 # Mostrar el historial del chat
 chat_container = st.container()
@@ -158,8 +187,6 @@ if not st.session_state.finalizado:
                 st.session_state.indice += 1
             else:
                 st.session_state.chat.append({"rol": "assistant", "mensaje": "La respuesta no fue clara. Por favor intenta ser más preciso."})
-                # Eliminar la última entrada del usuario para que no se repita en el historial
-                #st.session_state.chat = st.session_state.chat[:-1]
                 # Volver a mostrar la misma pregunta
                 st.session_state.chat.append({"rol": "assistant", "mensaje": texto})
 
@@ -167,9 +194,8 @@ if not st.session_state.finalizado:
 
     else:
     # Al finalizar la entrevista
-    #if not st.session_state.finalizado and st.session_state.indice >= len(preguntas_data):
-        nombre_archivo = guardar_respuestas(st.session_state.respuestas, nombre_usuario, id_usuario)
-        
+        nombre_archivo = guardar_respuestas(st.session_state.respuestas, nombre_usuario, id_vacancy)
+
         # Dirección de correo destino
         destino_email = "santiago.ferrero@adaptiera.team"
 
@@ -177,7 +203,7 @@ if not st.session_state.finalizado:
             respuestas=st.session_state.respuestas,
             preguntas_data=preguntas_data,
             nombre=nombre_usuario,
-            id_usuario=id_usuario,
+            id_vacancy=id_vacancy,
             destino_email=destino_email
         )
 
